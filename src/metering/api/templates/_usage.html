@@ -1,0 +1,16 @@
+<div class="cards">
+  {% for m in usage.meters %}
+  <div class="card"><div class="label">{{ m.meter }}</div><div class="value">{{ m.quantity }}</div>
+    <div class="muted">{% if m.estimate_cents is none %}no price plan{% else %}≈ {{ m.estimate_cents | money }} so far{% endif %}</div></div>
+  {% endfor %}
+  <div class="card"><div class="label">Estimated charges, {{ usage.period }}</div>
+    <div class="value">{{ usage.estimate_cents | money }}</div>
+    <div class="muted">before late-event adjustments</div></div>
+</div>
+<p class="muted">Aggregated through {{ usage.aggregated_through or "never" }}. Refreshes every 5 seconds.</p>
+{% if usage.rows %}
+<div class="scroll"><table>
+  <tr><th>Day (UTC)</th><th>Meter</th><th class="num">Quantity</th></tr>
+  {% for r in usage.rows %}<tr><td>{{ r.bucket }}</td><td>{{ r.meter }}</td><td class="num">{{ r.quantity }}</td></tr>{% endfor %}
+</table></div>
+{% else %}<p class="muted">No usage in {{ usage.period }}.</p>{% endif %}

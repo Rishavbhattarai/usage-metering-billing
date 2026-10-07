@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ customer_id }}{% endblock %}
+{% block content %}
+<h1>{{ customer_id }}</h1>
+<form method="get" class="muted">Period
+  <input name="period" value="{{ period }}" pattern="\d{4}-\d{2}" size="8"> <button>Show</button>
+</form>
+<div id="usage" hx-get="/dashboard/customers/{{ customer_id }}/usage?period={{ period }}"
+     hx-trigger="every 5s" hx-swap="innerHTML">
+  {% include "_usage.html" %}
+</div>
+
+<h2>Invoices</h2>
+{% if invoices %}
+<div class="scroll"><table>
+  <tr><th>Invoice</th><th>Period</th><th class="num">Total</th><th>Salesforce</th></tr>
+  {% for i in invoices %}
+  <tr>
+    <td><a href="/dashboard/invoices/{{ i.id }}">{{ i.id }}</a></td><td>{{ i.period }}</td>
+    <td class="num">{{ i.total_cents | money }}</td>
+    <td>{% if i.sf_status == "ok" %}<span class="ok">synced</span>{% elif i.sf_status %}<span class="bad">{{ i.sf_status }}</span>{% else %}<span class="muted">not synced</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}<p class="muted">No invoices yet.</p>{% endif %}
+{% endblock %}

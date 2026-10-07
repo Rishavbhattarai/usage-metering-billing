@@ -25,8 +25,8 @@ jobs:
       TEST_DATABASE_URL: postgresql+asyncpg://metering:metering@localhost:5432/metering_test
       REQUIRE_DB: "1"   # fail (don't skip) integration tests if Postgres is missing
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -41,3 +41,29 @@ jobs:
         run: mypy
       - name: Pytest
         run: pytest -q
+
+  compose-smoke:
+    # Whole stack (this API, aggregator, jobq API/worker/reaper from GitHub, Postgres, Redis):
+    # ingest -> aggregate -> close via jobq -> sync to fake Salesforce (with a forced failure
+    # and jobq retry) -> reconcile -> DLQ round trip -> replay the event log twice.
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      CLOSE_CUTOFF_LAG_SECONDS: "3"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Start stack
+        run: docker compose up -d --build --wait
+      - name: End-to-end demo (5,000 events)
+        run: |
+          pip install httpx
+          python loadtest/demo.py --events 5000 --fail-sync --dlq --replay
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

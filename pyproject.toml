@@ -17,16 +17,27 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "httpx>=0.27",
+    "jinja2>=3.1",
+    "simple-salesforce>=1.12",
 ]
 
+[project.scripts]
+metering = "metering.cli:main"
+
 [project.optional-dependencies]
+# Project 1's job queue (client + worker), for running the billing jobs on jobq.
+jobq = ["jobq[server] @ git+https://github.com/Rishavbhattarai/distributed-job-queue"]
 dev = [
+    "responses>=0.25",
     "ruff>=0.6",
     "mypy>=1.11",
     "pytest>=8.2",
     "pytest-asyncio>=0.24",
     "hypothesis>=6.100",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/metering"]
@@ -43,10 +54,14 @@ ignore = ["PT018"]  # compound asserts are fine in tests
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = "src"
+mypy_path = "src:loadtest"
 files = ["src", "tests", "loadtest"]
 explicit_package_bases = true
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["asyncpg.*"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]

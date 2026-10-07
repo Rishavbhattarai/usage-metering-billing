@@ -1,0 +1,17 @@
+{
+  "received": 0,
+  "accepted": 0,
+  "duplicates": 0,
+  "batches": 0,
+  "batch_size": 1000,
+  "concurrency": 8,
+  "seconds": 0.02,
+  "events_per_sec": 0,
+  "batch_latency_ms": null,
+  "lag_ms": {
+    "probes": 30,
+    "p50": 495,
+    "p95": 536,
+    "max": 591
+  }
+}

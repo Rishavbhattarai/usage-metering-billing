@@ -1,14 +1,14 @@
 """JobQueue abstraction.
 
-Invoice generation, the Salesforce sync and reconciliation will run as jobs on Project 1's
-distributed job queue (../01-distributed-job-queue, Python package `jobq`). This module
-defines the small interface this project depends on, plus:
+Invoice generation, the Salesforce sync and reconciliation run as jobs on Project 1's job queue
+(github.com/Rishavbhattarai/distributed-job-queue, package `jobq`). This module defines the
+small interface this project depends on, plus:
 
   * InProcessJobQueue: runs handlers in-process. The default for tests and local dev.
   * Project1JobQueue: adapter over `jobq.client.AsyncJobqClient`. It is typed structurally
-    (no import of `jobq`), so this project neither installs nor depends on it yet. To switch:
+    (no import of `jobq`), so the core package doesn't require it. To switch:
 
-        pip install -e ../01-distributed-job-queue
+        pip install -e ".[jobq]"
         queue = Project1JobQueue.from_jobq()          # base URL from $JOBQ_URL
 
 Semantics both implementations share (matching jobq): an idempotency_key returns the original

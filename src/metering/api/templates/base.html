@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Usage{% endblock %} · Metering</title>
+  <script src="/static/htmx-2.0.4.min.js"></script>
+  <style>
+    :root { --fg:#1b1f24; --muted:#5f6b7a; --line:#e3e7ec; --bg:#fff; --panel:#f6f8fa; --accent:#0b62d6; --ok:#1a7f37; --bad:#c62828; }
+    @media (prefers-color-scheme: dark) { :root { --fg:#e6edf3; --muted:#9aa7b4; --line:#30363d; --bg:#0d1117; --panel:#161b22; --accent:#4c9aff; --ok:#3fb950; --bad:#f85149; } }
+    * { box-sizing: border-box; }
+    body { margin:0; font:15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; color:var(--fg); background:var(--bg); }
+    header { border-bottom:1px solid var(--line); padding:12px 16px; display:flex; gap:16px; align-items:baseline; }
+    header a { color:var(--fg); font-weight:600; text-decoration:none; }
+    main { max-width:1000px; margin:0 auto; padding:16px; }
+    h1 { font-size:22px; margin:8px 0 16px; } h2 { font-size:17px; margin:24px 0 8px; }
+    table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+    th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+    th { color:var(--muted); font-weight:500; font-size:13px; }
+    td.num, th.num { text-align:right; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+    .card .label { color:var(--muted); font-size:13px; } .card .value { font-size:20px; font-weight:600; }
+    .muted { color:var(--muted); font-size:13px; } a { color:var(--accent); }
+    .ok { color:var(--ok); } .bad { color:var(--bad); }
+    .scroll { overflow-x:auto; } code { font-size:12px; word-break:break-all; }
+  </style>
+</head>
+<body>
+  <header><a href="/dashboard">Usage &amp; billing</a><span class="muted">metering v{{ request.app.version }}</span></header>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

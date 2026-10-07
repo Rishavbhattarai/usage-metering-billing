@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ inv.id }}{% endblock %}
+{% block content %}
+<h1>{{ inv.id }}</h1>
+<p><a href="/dashboard/customers/{{ inv.customer_id }}">{{ inv.customer_id }}</a> · period {{ inv.period }} · {{ inv.currency }}</p>
+<div class="scroll"><table>
+  <tr><th>#</th><th>Line</th><th>Usage period</th><th class="num">Quantity</th><th class="num">Unit price</th><th class="num">Amount</th></tr>
+  {% for l in inv.lines %}
+  <tr><td>{{ l.line_no }}</td><td>{{ l.description }}{% if l.kind == "adjustment" %} <span class="muted">(adjustment)</span>{% endif %}</td>
+    <td>{{ l.usage_period }}</td><td class="num">{{ l.quantity }}</td>
+    <td class="num">{{ l.unit_price or "" }}</td><td class="num">{{ l.amount_cents | money }}</td></tr>
+  {% endfor %}
+  <tr><th colspan="5">Total</th><th class="num">{{ inv.total_cents | money }}</th></tr>
+</table></div>
+<p class="muted">Content hash (SHA-256 of the canonical invoice JSON): <code>{{ hash }}</code>.
+  <a href="/v1/invoices/{{ inv.id }}/rerate">Re-rate from raw events</a></p>
+{% endblock %}

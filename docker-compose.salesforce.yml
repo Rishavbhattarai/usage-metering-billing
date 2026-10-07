@@ -1,0 +1,15 @@
+# Live Salesforce instead of the fake (see docs/salesforce-setup.md):
+#   SF_USERNAME=... SF_CONSUMER_KEY=... SF_PRIVATE_KEY_FILE=~/.salesforce/metering-jwt/server.key \
+#   docker compose -f docker-compose.yml -f docker-compose.salesforce.yml up --build
+# The key is mounted as a secret file; it is never copied into an image or the repo.
+services:
+  api:
+    environment: { SALESFORCE_MODE: live }
+    secrets: [sf_private_key]
+  billing-worker:
+    environment: { SALESFORCE_MODE: live }
+    secrets: [sf_private_key]
+
+secrets:
+  sf_private_key:
+    file: ${SF_PRIVATE_KEY_FILE:?set SF_PRIVATE_KEY_FILE to the path of your server.key}

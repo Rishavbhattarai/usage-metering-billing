@@ -1,0 +1,22 @@
+{
+  "received": 1000000,
+  "accepted": 900129,
+  "duplicates": 99871,
+  "batches": 1000,
+  "batch_size": 1000,
+  "concurrency": 8,
+  "seconds": 25.93,
+  "events_per_sec": 38568,
+  "batch_latency_ms": {
+    "p50": 185.4,
+    "p95": 371.7,
+    "p99": 596.5,
+    "max": 900.0
+  },
+  "lag_ms": {
+    "probes": 8,
+    "p50": 2174,
+    "p95": 5605,
+    "max": 5605
+  }
+}

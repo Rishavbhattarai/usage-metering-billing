@@ -34,12 +34,25 @@ def month_start(dt: datetime) -> datetime:
 
 
 def generate(
-    count: int, dup_rate: float, late_rate: float, customers: int, seed: int, now: datetime
+    count: int,
+    dup_rate: float,
+    late_rate: float,
+    customers: int,
+    seed: int,
+    now: datetime,
+    period_start: datetime | None = None,
+    id_prefix: str = "lt",
 ) -> Iterator[dict[str, Any]]:
-    """Yield `count` events in total; about dup_rate of them are re-sends of earlier events."""
+    """Yield `count` events in total; about dup_rate of them are re-sends of earlier events.
+
+    Events fall in the month of `now` up to `now`, or across the whole month starting at
+    `period_start` if given. "Late" events fall in the month before.
+    """
     rng = random.Random(seed)
-    current = month_start(now)
+    current = month_start(period_start or now)
     previous = month_start(current - timedelta(days=1))
+    if period_start is not None:
+        now = month_start(current + timedelta(days=32))
     sent: list[dict[str, Any]] = []
     next_id = 0
     for _ in range(count):
@@ -56,7 +69,7 @@ def generate(
         # Quantities go out as strings so no float ever touches the money path.
         quantity = Decimal(rng.randint(lo * 1000, hi * 1000)).scaleb(-3)
         event = {
-            "event_id": f"lt-{seed}-{next_id:09d}",
+            "event_id": f"{id_prefix}-{seed}-{next_id:09d}",
             "customer_id": f"cust_{rng.randrange(customers):05d}",
             "meter": meter,
             "quantity": str(quantity),

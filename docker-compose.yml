@@ -1,3 +1,38 @@
+# One command: docker compose up --build
+#   API + dashboard  http://localhost:${API_PORT:-8001}       (/dashboard, /docs)
+#   jobq API         http://localhost:${JOBQ_API_PORT:-8002}  (/jobs, /dlq)
+# Project 1 (jobq) is built from GitHub by default. To build from a local checkout instead:
+#   JOBQ_CONTEXT=/path/to/distributed-job-queue docker compose up --build
+name: metering
+
+x-jobq-source: &jobq-source ${JOBQ_CONTEXT:-https://github.com/Rishavbhattarai/distributed-job-queue.git#main}
+
+x-app-build: &app-build
+  context: .
+  additional_contexts:
+    jobq: *jobq-source
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql+asyncpg://metering:metering@postgres:5432/metering
+  JOBQ_URL: http://jobq-api:8000
+  SALESFORCE_MODE: ${SALESFORCE_MODE:-fake}
+  FAKE_SF_STATE: /data/fake-salesforce.json
+  CLOSE_CUTOFF_LAG_SECONDS: ${CLOSE_CUTOFF_LAG_SECONDS:-60}
+  SYNC_BACKOFF_BASE: ${SYNC_BACKOFF_BASE:-0.5}
+  # Live Salesforce only (SALESFORCE_MODE=live); see docs/salesforce-setup.md.
+  SF_USERNAME: ${SF_USERNAME:-}
+  SF_CONSUMER_KEY: ${SF_CONSUMER_KEY:-}
+  SF_PRIVATE_KEY_PATH: /run/secrets/sf_private_key
+  SF_DOMAIN: ${SF_DOMAIN:-login}
+
+x-jobq-env: &jobq-env
+  JOBQ_DATABASE_URL: postgresql+asyncpg://metering:metering@postgres:5432/jobq
+  JOBQ_REDIS_URL: redis://redis:6379/0
+  JOBQ_LOG_LEVEL: ${JOBQ_LOG_LEVEL:-INFO}
+  # Sync jobs get more tries before they land in the DLQ (backoff is jobq's, with jitter).
+  JOBQ_MAX_ATTEMPTS_BY_TYPE: billing.sync_salesforce=5,billing.reconcile=3,billing.close_period=3
+  JOBQ_BACKOFF_BASE: ${JOBQ_BACKOFF_BASE:-1}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -5,8 +40,7 @@ services:
       POSTGRES_USER: metering
       POSTGRES_PASSWORD: metering   # local dev only
       POSTGRES_DB: metering
-    ports:
-      - "5433:5432"   # 5433 on the host so it doesn't clash with a local Postgres on 5432
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5433}:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
@@ -16,20 +50,96 @@ services:
       timeout: 3s
       retries: 30
 
-  api:
-    build: .
-    environment:
-      DATABASE_URL: postgresql+asyncpg://metering:metering@postgres:5432/metering
-    ports:
-      - "8000:8000"
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # ---- this project -------------------------------------------------------------------------
+  migrate:
+    build: *app-build
+    image: metering:dev
+    command: ["sh", "-c", "alembic upgrade head && metering seed-plans"]
+    environment: *app-env
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    image: metering:dev
+    environment: *app-env
+    ports: ["127.0.0.1:${API_PORT:-8001}:8000"]
+    volumes: [fakesf:/data]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      jobq-api: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
-      interval: 5s
+      interval: 3s
       timeout: 3s
-      retries: 10
+      retries: 20
+
+  aggregator:
+    image: metering:dev
+    command: ["metering", "aggregate", "--loop", "--interval", "${AGGREGATE_INTERVAL:-1}"]
+    environment: *app-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  billing-worker:
+    # A jobq worker that loads this project's billing handlers.
+    image: metering:dev
+    command: ["jobq-worker"]
+    environment:
+      <<: [*app-env, *jobq-env]
+      JOBQ_HANDLER_MODULES: metering.jobs.handlers
+    volumes: [fakesf:/data]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      jobq-migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  # ---- Project 1: jobq ------------------------------------------------------------------------
+  jobq-migrate:
+    build: *jobq-source
+    image: jobq:metering
+    command: ["alembic", "upgrade", "head"]
+    environment: *jobq-env
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  jobq-api:
+    image: jobq:metering
+    command: ["uvicorn", "jobq.api:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    environment: *jobq-env
+    ports: ["127.0.0.1:${JOBQ_API_PORT:-8002}:8000"]
+    depends_on:
+      jobq-migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  jobq-reaper:
+    # Promotes scheduled retries, expires lost leases, moves exhausted jobs to the DLQ.
+    image: jobq:metering
+    command: ["jobq-reaper"]
+    environment: *jobq-env
+    depends_on:
+      jobq-migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
 
 volumes:
   pgdata:
+  fakesf:

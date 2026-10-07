@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from metering.salesforce import (
@@ -5,7 +7,6 @@ from metering.salesforce import (
     FakeSalesforceClient,
     SalesforceClient,
     SalesforceError,
-    SimpleSalesforceClient,
 )
 
 
@@ -59,6 +60,38 @@ def test_missing_external_id_is_a_per_record_error() -> None:
     assert not result.success
 
 
-def test_real_client_is_not_implemented_yet() -> None:
-    with pytest.raises(NotImplementedError):
-        SimpleSalesforceClient()
+def test_state_file_is_shared_between_instances(tmp_path: Path) -> None:
+    path = tmp_path / "org.json"
+    writer = FakeSalesforceClient(path)
+    writer.upsert_account(Customer("cust_1", "Acme"))
+    writer.fail_next(1, after=1)
+
+    reader = FakeSalesforceClient(path)
+    assert reader.count("Account") == 1
+    assert reader.get_by_external_id("Account", "Billing_Customer_Id__c", "cust_1") is not None
+    with pytest.raises(SalesforceError):  # the failure scheduled by the other instance
+        reader.get_by_external_id("Account", "Billing_Customer_Id__c", "cust_1")
+    assert reader.get_by_external_id("Account", "Billing_Customer_Id__c", "cust_1") is not None
+
+
+def test_fetch_flattens_relationship_fields() -> None:
+    sf = FakeSalesforceClient()
+    sf.upsert_account(Customer("cust_1", "Acme"))
+    sf.upsert(
+        "Invoice__c",
+        "Invoice_Ext_Id__c",
+        [
+            {
+                "Invoice_Ext_Id__c": "inv1",
+                "Account__r": {"Billing_Customer_Id__c": "cust_1"},
+                "Total__c": "12.34",
+            }
+        ],
+    )
+    got = sf.fetch(
+        "Invoice__c",
+        "Invoice_Ext_Id__c",
+        ["inv1", "missing"],
+        ["Total__c", "Account__r.Billing_Customer_Id__c"],
+    )
+    assert got == {"inv1": {"Total__c": "12.34", "Account__r.Billing_Customer_Id__c": "cust_1"}}

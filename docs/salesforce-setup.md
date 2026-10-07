@@ -4,8 +4,9 @@ Everything here is free. It takes about 45 minutes, most of it waiting for email
 Connected App to become active. **Do this yourself.** Nothing in this repo signs up for or
 calls Salesforce.
 
-Week 0 is done when `sf org display` works against your org and a JWT login works without
-a browser. The Python JWT login comes with the real client in push 3/3.
+You're done when `sf org display` works against your org, the JWT login works without a
+browser, and step 8 runs a sync with zero drift. The pipeline's Salesforce client
+(`SimpleSalesforceClient`) is tested only against mocked HTTP. Step 8 is its first live run.
 
 > Salesforce renames Setup pages fairly often. If a label below doesn't match what you see,
 > search Setup's Quick Find for the key word (for example "App Manager" or "External Client App").
@@ -116,12 +117,47 @@ cp .env.example .env
 # SF_DOMAIN=login
 ```
 
-The Python client (push 3/3) reads these, for example with simple-salesforce:
-`Salesforce(username=..., consumer_key=..., privatekey_file=..., domain="login")`.
+`metering.salesforce.SimpleSalesforceClient.from_env()` reads these and logs in with the JWT
+bearer flow (simple-salesforce, `Salesforce(username=..., consumer_key=..., privatekey_file=...)`).
 
 For the optional manual GitHub Actions workflow, store the same values as **repository
 secrets** (`SF_USERNAME`, `SF_CONSUMER_KEY`, `SF_PRIVATE_KEY` with the key file's
 *contents*) and write the key to a temp file inside the job. Normal CI never uses them.
+
+## 8. Run the live sync
+
+**From the CLI** (Python 3.12 venv, Postgres from `docker compose up -d postgres`):
+
+```bash
+set -a; source .env; set +a          # SF_* settings, DATABASE_URL
+export SALESFORCE_MODE=live
+metering sync 2026-08                # needs a closed period; see the demo or POST /v1/periods/2026-08/close
+metering reconcile 2026-08           # exit code 0 = zero drift
+```
+
+**Or with the whole stack.** The private key is mounted as a compose secret and never baked
+into an image:
+
+```bash
+SF_USERNAME=you.billing@dev.example SF_CONSUMER_KEY=<CONSUMER_KEY> \
+SF_PRIVATE_KEY_FILE=~/.salesforce/metering-jwt/server.key \
+docker compose -f docker-compose.yml -f docker-compose.salesforce.yml up -d --build --wait
+```
+
+Then close a period (`POST /v1/periods/YYYY-MM/close`). The close job chains the sync and the
+reconciliation. Check the result:
+
+```bash
+curl -s localhost:8001/v1/periods/2026-08/reconciliation   # drift 0, ledger total == salesforce total
+sf data query --query "SELECT Invoice_Ext_Id__c, Total__c, Status__c FROM Invoice__c" --target-org billing-dev
+sf data query --query "SELECT External_Key__c, Quantity__c FROM Usage_Summary__c LIMIT 10" --target-org billing-dev
+sf org list limits --target-org billing-dev | grep DailyApiRequests   # API calls used
+```
+
+A Developer Edition org holds about 5 MB of data, so sync a small run (for example
+`python loadtest/demo.py --events 20000`), not the 1M-event demo. Records are aggregates, so
+1M events and 20k events produce the same number of Salesforce records for 100 customers,
+but smaller runs keep the org's storage and API counts easy to read.
 
 ## Troubleshooting
 

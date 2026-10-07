@@ -1,25 +1,22 @@
-# Load test
+# Load tests and demo
 
-`generate_events.py` produces a deterministic event stream (per `--seed`) with:
-- **duplicates**: `--dup-rate` of the events are re-sends of earlier ones (same `event_id`)
-- **late events**: `--late-rate` of the new events have `occurred_at` in the previous month
+All three scripts talk to the running compose stack over HTTP. Results from the last run are
+in `results/`, and the hardware is listed in the main README.
+
+| Script | What it measures |
+|---|---|
+| `bench.py` | Ingestion throughput and batch latency with N requests in flight, plus event-to-aggregate lag from probe events. |
+| `demo.py` | The full month-end flow with 1M events: ingest, aggregate, close via jobq, sync with a forced failure, late events, reconcile, DLQ round trip, re-rate, replay. |
+| `generate_events.py` | Deterministic event stream with duplicates and late events (JSON Lines or POST). |
 
 ```bash
-docker compose up -d --build
-python loadtest/generate_events.py --count 100000 --url http://localhost:8000
-# {"received": 100000, "accepted": ..., "duplicates": ..., "seconds": ..., "events_per_sec": ...}
-
-# Re-run with the same seed: everything is a duplicate, and nothing new is stored.
-python loadtest/generate_events.py --count 100000 --url http://localhost:8000
-
-# Or write JSON Lines without a server:
-python loadtest/generate_events.py --count 10000 --out events.jsonl
+# Short close cutoff so the demo doesn't wait a minute before each close.
+CLOSE_CUTOFF_LAG_SECONDS=3 docker compose up -d --build --wait
+python loadtest/bench.py --count 1000000 --concurrency 8 --out loadtest/results/ingest-1m.json
+python loadtest/bench.py --count 0 --probe-seconds 30 --out loadtest/results/lag-idle.json
+python loadtest/demo.py --events 1000000 --fail-sync --dlq --replay --out loadtest/results/demo-1m.json
+docker compose down -v
 ```
 
-The script uses one client sending sequential batches, so it measures latency-bound
-throughput. For published numbers (Week 5), add concurrency (or use k6/Locust), record p50/p99,
-and state the hardware.
-
-## Results
-
-Not measured yet. Fill this in at Week 5 with the hardware, Docker CPU/RAM, events/sec and p50/p99.
+`demo.py` uses `docker compose exec` to inject Salesforce failures and to run the replay
+check, so run it from the repo root.

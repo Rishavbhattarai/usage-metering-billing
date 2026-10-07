@@ -27,7 +27,6 @@ salesforce/.localdevserver/
 
 # Load test output
 loadtest/*.jsonl
-loadtest/results/*.json
 
 .DS_Store
 
@@ -56,3 +55,6 @@ YOUR_TURN.md
 
 # --- Logs ---
 *.log
+
+# Fake Salesforce org state (local runs)
+.fake-salesforce.*

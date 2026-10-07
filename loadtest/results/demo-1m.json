@@ -1,0 +1,168 @@
+{
+  "events": 1000000,
+  "period": "2026-08",
+  "ingest": {
+    "received": 1000000,
+    "accepted": 899535,
+    "duplicates": 100465,
+    "seconds": 30.35,
+    "events_per_sec": 32944
+  },
+  "aggregate_check": true,
+  "close_1": {
+    "close": {
+      "period": "2026-08",
+      "invoices": 100,
+      "closed_at": "2026-10-07T16:16:53.162742+00:00",
+      "sync_job_id": "4fc33302-05b3-41c0-b006-b3628c171b95",
+      "total_cents": 2643064107,
+      "already_closed": false,
+      "adjustment_lines": 0
+    },
+    "sync_attempts": 2,
+    "sync_sent": {
+      "Account": 100,
+      "Invoice__c": 100,
+      "Usage_Summary__c": 200
+    },
+    "reconciliation": {
+      "checked": 400,
+      "drift": 0,
+      "ledger_total_cents": 2643064107,
+      "salesforce_total_cents": 2643064107
+    },
+    "seconds": 3.27
+  },
+  "late_ingest": {
+    "received": 10000,
+    "accepted": 10000,
+    "duplicates": 0,
+    "seconds": 0.35,
+    "events_per_sec": 28643
+  },
+  "next_ingest": {
+    "received": 100000,
+    "accepted": 90054,
+    "duplicates": 9946,
+    "seconds": 3.73,
+    "events_per_sec": 26774
+  },
+  "close_2": {
+    "close": {
+      "period": "2026-09",
+      "invoices": 100,
+      "closed_at": "2026-10-07T16:17:04.337687+00:00",
+      "sync_job_id": "2bd519e5-1667-45f4-9cdc-fe356ac5e90d",
+      "total_cents": 297319453,
+      "already_closed": false,
+      "adjustment_lines": 200
+    },
+    "sync_attempts": 1,
+    "sync_sent": {
+      "Account": 0,
+      "Invoice__c": 100,
+      "Usage_Summary__c": 400
+    },
+    "reconciliation": {
+      "checked": 600,
+      "drift": 0,
+      "ledger_total_cents": 297319453,
+      "salesforce_total_cents": 297319453
+    },
+    "seconds": 3.84
+  },
+  "sample_invoice": {
+    "id": "inv_2026-09_cust_00000",
+    "total_cents": 3023600,
+    "adjustment_lines": [
+      {
+        "line_no": 5,
+        "kind": "adjustment",
+        "meter": "api_calls",
+        "usage_period": "2026-08",
+        "description": "api_calls: late usage for 2026-08",
+        "quantity": "1538.455000",
+        "unit_price": null,
+        "amount_cents": 7692
+      },
+      {
+        "line_no": 6,
+        "kind": "adjustment",
+        "meter": "gb_stored",
+        "usage_period": "2026-08",
+        "description": "gb_stored: late usage for 2026-08",
+        "quantity": "137488.654000",
+        "unit_price": null,
+        "amount_cents": 316224
+      }
+    ],
+    "content_hash": "53914a5e7adacbc3c3296dfba359285c14f4618351a5b49da35aefaae2b8f976"
+  },
+  "totals": {
+    "ledger_cents": 2940383560,
+    "salesforce_cents": 2940383560,
+    "drift": [
+      0,
+      0
+    ]
+  },
+  "rerate": {
+    "2026-08": {
+      "invoices": 100,
+      "identical": 100,
+      "delta_cents": 0
+    },
+    "2026-09": {
+      "invoices": 100,
+      "identical": 100,
+      "delta_cents": 0
+    }
+  },
+  "dlq": {
+    "drift_after_tamper": 1,
+    "dead_status": "dead",
+    "attempts_before_dlq": 5,
+    "in_dlq": true,
+    "replayed_status": "succeeded",
+    "drift_after_replay": 0
+  },
+  "replay": {
+    "periods": [
+      "2026-08",
+      "2026-09"
+    ],
+    "stored_invoices": 200,
+    "runs": [
+      {
+        "run": 1,
+        "events_replayed": 999589,
+        "invoices_rebuilt": 200,
+        "mismatched_vs_stored": 0,
+        "mismatched_ids": [],
+        "invoice_set_sha256": "9d9b59c2e44a514ac6c99893533d72214c1d676e461121b7da0396c942edbf1b",
+        "seconds": 18.98
+      },
+      {
+        "run": 2,
+        "events_replayed": 999589,
+        "invoices_rebuilt": 200,
+        "mismatched_vs_stored": 0,
+        "mismatched_ids": [],
+        "invoice_set_sha256": "9d9b59c2e44a514ac6c99893533d72214c1d676e461121b7da0396c942edbf1b",
+        "seconds": 17.98
+      }
+    ],
+    "identical_across_runs": true,
+    "all_match_stored": true
+  },
+  "checks": {
+    "aggregate_matches_raw": true,
+    "zero_drift": true,
+    "ledger_equals_salesforce": true,
+    "rerate_identical": true,
+    "late_events_adjusted": true,
+    "sync_retried_by_jobq": true,
+    "dlq_round_trip": true,
+    "replay_identical": true
+  }
+}

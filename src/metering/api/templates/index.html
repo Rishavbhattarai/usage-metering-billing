@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block content %}
+<h1>Customers</h1>
+{% if customers %}
+<div class="scroll"><table>
+  <tr><th>Customer</th><th class="num">Meters</th><th class="num">Invoices</th><th>Usage aggregated at</th></tr>
+  {% for c in customers %}
+  <tr>
+    <td><a href="/dashboard/customers/{{ c.customer_id }}">{{ c.customer_id }}</a></td>
+    <td class="num">{{ c.meters }}</td><td class="num">{{ c.invoices }}</td>
+    <td class="muted">{{ c.updated_at.strftime("%Y-%m-%d %H:%M:%S UTC") if c.updated_at }}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}<p class="muted">No aggregated usage yet. Send events to <code>POST /v1/events/batch</code>.</p>{% endif %}
+
+<h2>Closed periods</h2>
+{% if periods %}
+<div class="scroll"><table>
+  <tr><th>Period</th><th>Cutoff</th><th class="num">Invoices</th><th class="num">Total</th><th>Salesforce drift</th></tr>
+  {% for p in periods %}
+  <tr>
+    <td>{{ p.period }}</td><td class="muted">{{ p.closed_at.strftime("%Y-%m-%d %H:%M:%S UTC") }}</td>
+    <td class="num">{{ p.invoices }}</td><td class="num">{{ p.total_cents | money }}</td>
+    <td>{% if p.drift is none %}<span class="muted">not reconciled</span>{% elif p.drift == 0 %}<span class="ok">0</span>{% else %}<span class="bad">{{ p.drift }}</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}<p class="muted">No period closed yet.</p>{% endif %}
+{% endblock %}

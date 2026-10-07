@@ -1,29 +1,36 @@
 # Design: Usage Metering & Billing Pipeline
 
-Status: Week 1 (ingestion) done. Week 2 rating engine started. See `SCOPE.md` for the full plan.
+Scope: [SCOPE.md](../SCOPE.md). Decisions: [adr/](adr/). Measured results: [README](../README.md#results).
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  P[Producers / loadtest] -->|POST /v1/events/batch<br/>client event_id| ING[Ingestion API<br/>FastAPI]
+  P[Producers / loadtest] -->|POST /v1/events/batch<br/>client event_id| ING[Ingestion API]
   ING -->|INSERT ... ON CONFLICT DO NOTHING| ES[(usage_events<br/>append-only)]
-  ES -.->|TODO push 2/3| AGG[Aggregator] -.-> UH[(usage_hourly)]
-  UH -.-> RATE[Rating engine<br/>pure functions]
-  RATE -.->|TODO week 3| INV[Invoice job]
-  INV -.-> LED[(invoices + lines<br/>BIGINT cents)]
-  LED -.->|TODO| SYNC[Salesforce sync job] -.->|upsert by External ID| SF[(Salesforce<br/>Dev org)]
-  REC[Reconciliation job] -.-> LED & SF
-  subgraph Q[JobQueue interface]
-    INV
-    SYNC
-    REC
+  ES --> AGG[Aggregator loop] --> UH[(usage_hourly<br/>+ usage_daily view)]
+  UH --> DASH[Usage dashboard]
+  subgraph JQ[jobq: Project 1]
+    CLOSE[billing.close_period] --> SYNC[billing.sync_salesforce] --> REC[billing.reconcile]
+    SYNC -.exhausted retries.-> DLQ[(DLQ)]
   end
+  ING -->|POST /v1/periods/P/close| CLOSE
+  ES -->|events + cutoffs| CLOSE
+  PL[(price_plans)] --> CLOSE
+  CLOSE --> LED[(invoices + lines<br/>BIGINT cents, content hash)]
+  LED --> SYNC -->|Bulk API 2.0 upsert<br/>by External ID| SF[(Salesforce)]
+  REC --> LED & SF
 ```
 
-Solid lines are built. Dotted lines are planned.
+| Service (compose) | What it runs |
+|---|---|
+| `api` | FastAPI: ingestion, billing endpoints, dashboard. Enqueues jobs on jobq. |
+| `aggregator` | `metering aggregate --loop`: dirty hour cells every second |
+| `billing-worker` | `jobq-worker` with `JOBQ_HANDLER_MODULES=metering.jobs.handlers` |
+| `jobq-api`, `jobq-reaper`, `redis` | Project 1, built from its GitHub repo |
+| `postgres` | databases `metering`, `jobq`, `metering_test`, `metering_replay` |
 
-## Ingestion: exactly-once *effect*
+## Ingestion: exactly-once effect
 
 ```mermaid
 sequenceDiagram
@@ -38,71 +45,78 @@ sequenceDiagram
   Note over P,API: Timeout? Re-send the same batch.<br/>Already-stored events come back as duplicates.
 ```
 
-- The **producer owns `event_id`**. Producers retry at least once, and the database primary key
-  makes the effect exactly-once. The guarantee lives in Postgres, so it holds across API
-  replicas and concurrent requests (tested with 8 concurrent overlapping batches).
-- **First write wins.** A re-used `event_id` with a different payload is counted as a duplicate
-  and the original is kept. Producers must never reuse ids for different events.
-- **Batches are atomic.** A batch is one transaction, so on any error nothing is stored and
-  the whole batch can be retried.
-- **Rows are sorted by `event_id`** before insert, so concurrent batches with overlapping ids
-  take row locks in the same order and can't deadlock.
-- **Append-only** is enforced by a trigger that rejects `UPDATE` and `DELETE` on
-  `usage_events`. Corrections will be new adjustment rows, never edits.
-- **Where the guarantee breaks:** if a producer generates a *new* `event_id` when it retries,
-  that's a real double count, and nothing downstream can detect it. `event_id` must be
-  derived from the source (for example `request_id`) or persisted before the first send.
+- The producer owns `event_id`. The primary key makes retries safe across API replicas and
+  concurrent requests. First write wins.
+- Batches are one transaction and are sorted by `event_id`, so overlapping concurrent batches
+  can't deadlock.
+- A trigger rejects `UPDATE` and `DELETE` on `usage_events`.
+- **Where it breaks:** a producer that mints a new `event_id` on retry double counts, and
+  nothing downstream can tell.
 
-## Data model (built so far)
+## Month-end close (jobq)
+
+```mermaid
+sequenceDiagram
+  participant API
+  participant JQ as jobq
+  participant W as billing-worker
+  participant DB as Postgres
+  participant SF as Salesforce
+  API->>JQ: enqueue billing.close_period {P}<br/>Idempotency-Key close:P
+  JQ->>W: deliver (at least once)
+  W->>DB: one tx: lock, check order, cutoff T_P,<br/>compute invoices from raw events, insert
+  W->>JQ: enqueue sync {P} (key sync:P:close)
+  JQ->>W: billing.sync_salesforce
+  W->>SF: Accounts, Usage_Summary__c, Invoice__c<br/>(3 tries per call, backoff)
+  alt still failing
+    W-->>JQ: raise -> jobq retries with backoff -> DLQ after 5 attempts
+  end
+  W->>JQ: enqueue reconcile {P} (key reconcile:P:run)
+  JQ->>W: billing.reconcile
+  W->>SF: fetch by External IDs
+  W->>DB: store drift report
+```
+
+Every handler is idempotent because jobq delivers at least once. The close returns the stored
+result for a closed period, the sync upserts by External ID, and chained jobs use idempotency
+keys. A jobq cron schedule can trigger the close with `{"period": "previous"}`.
+
+Late events and the cutoff rules are in [ADR 0003](adr/0003-late-events.md).
+
+## Data model
 
 | Table | Key | Notes |
 |-------|-----|-------|
-| `usage_events` | `event_id` PK | `quantity NUMERIC(20,6) >= 0`, `occurred_at`/`received_at timestamptz`. Index on `(customer_id, meter, occurred_at)`. Append-only trigger. |
-| `usage_hourly` | `(customer_id, meter, hour)` | Created but not populated yet (aggregator is push 2/3). `hour` must be a UTC hour boundary (CHECK). |
+| `usage_events` | `event_id` | Append-only. Indexed by (customer, meter, occurred_at), received_at, occurred_at. |
+| `usage_hourly` | (customer, meter, hour) | Recomputed cells (ADR 0002). `usage_daily` is a view. |
+| `aggregation_state` | name | Aggregator watermark. |
+| `price_plans` | id; unique (meter, effective_from) | flat or graduated tiers (JSONB, decimal strings), min commit in cents. New prices are new rows. |
+| `billing_periods` | period | Cutoff `closed_at` per closed month. |
+| `invoices` | id `inv_YYYY-MM_customer`; unique (customer, period) | total cents, SHA-256 of the canonical invoice JSON. |
+| `invoice_lines` | (invoice_id, line_no) | kind usage / minimum / adjustment, usage_period, quantity, unit price, cents. |
+| `sf_sync_log` | (entity, external_id) | Last synced payload hash and status. |
+| `reconciliation_runs` | id | Drift report per run. |
 
-Late events: `occurred_at` (when usage happened) is separate from `received_at` (when we
-learned about it). Late events are accepted. Booking them as adjustments after period close
-is Week 3.
+## Rating engine
 
-## Rating engine (`src/metering/rating/`)
+Pure functions in `src/metering/rating/`: flat, graduated tiers, minimum commit, with exact
+`Decimal` math and half-up rounding once per line ([ADR 0001](adr/0001-integer-cents-and-rounding.md)).
+Hypothesis checks that totals are never negative and never fall as usage rises, that flat
+equals single-tier pricing, and that rounding error stays within half a cent per line.
 
-Pure functions with no I/O, clock or global state, so the same inputs always give the same output.
+## Determinism checks
 
-- `FlatPricing(unit_price)`: `quantity x unit_price`.
-- `GraduatedPricing(tiers)`: tier *i* covers `(up_to[i-1], up_to[i]]`, and the last tier is
-  unbounded. Each unit is charged at its own tier's price, and each touched tier becomes one line.
-- `PricePlan(meter, pricing, min_commit_cents)`: `rate_with_minimum` adds a
-  "minimum commit shortfall" line so that `total == max(usage, minimum)`.
-- Money rules (exact multiplication, half-up rounding once per line, int cents) are in
-  [ADR 0001](adr/0001-integer-cents-and-rounding.md).
+- **Re-rate** (`GET /v1/periods/{p}/rerate`, `/v1/invoices/{id}/rerate`, `metering rerate`):
+  recompute from raw events with the stored cutoffs and the current plans, then diff. A new
+  plan version effective for an old period shows up as a per-line delta.
+- **Replay** (`metering replay-check`): copy the event log, plans and cutoffs into an empty
+  database in a different shuffled order per run, rebuild every invoice, and compare the
+  hashes with the stored ones and across runs.
 
-## Integration seams
+## Salesforce
 
-- **`JobQueue`** (`src/metering/jobs/queue.py`): `enqueue(job_type, payload, *,
-  idempotency_key, priority, run_at)` and `get(job_id)`. `InProcessJobQueue` (the default)
-  runs jobs inline. `Project1JobQueue` wraps Project 1's `jobq.client.AsyncJobqClient`,
-  which it matches structurally without importing `jobq`. Switch with
-  `Project1JobQueue.from_jobq()` after `pip install -e ../01-distributed-job-queue`
-  (it reads `$JOBQ_URL`). jobq delivers at least once, so every job handler (invoice, sync,
-  reconcile) must be idempotent: `UNIQUE(customer_id, period)` and External ID upserts.
-- **`SalesforceClient`** (`src/metering/salesforce/client.py`): upserts by External ID only.
-  `FakeSalesforceClient` copies the parts of Salesforce the sync depends on: upsert
-  semantics, parent lookup by External ID, and injectable failures. CI never calls
-  Salesforce. The real client is push 3/3.
-
-## Salesforce model (`salesforce/force-app`)
-
-| Object | External ID | Fields |
-|--------|-------------|--------|
-| `Account` | `Billing_Customer_Id__c` (Text 64, unique) | |
-| `Usage_Summary__c` | `External_Key__c` = `customer:meter:YYYY-MM` | `Account__c` (lookup), `Meter__c`, `Period__c`, `Quantity__c` Number(18,6) |
-| `Invoice__c` | `Invoice_Ext_Id__c` | `Account__c` (lookup), `Period__c`, `Total__c` Currency(16,2), `Status__c` (Draft/Finalized/Void) |
-
-The `Billing_Integration` permission set grants object access and field-level security.
-Without it, fields deployed through metadata can't be seen by the API user.
-
-## Open questions / next ADRs
-
-- 0002: how the aggregator works (recompute vs incremental). This is push 2/3.
-- Late events: reopen the invoice or book an adjustment on the next one.
-- Bulk API 2.0 vs REST composite for the sync.
+See [ADR 0004](adr/0004-what-to-sync-to-salesforce.md) for what syncs and
+[ADR 0005](adr/0005-bulk-api-vs-rest.md) for how. The metadata is in `salesforce/force-app`:
+External IDs, lookups to Account, and a permission set for field access. CI and the demo use
+`FakeSalesforceClient`, which persists to a JSON file so the worker and CLI share one fake org,
+and supports injected failures and manual edits.
