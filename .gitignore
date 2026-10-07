@@ -1,0 +1,58 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# Secrets: never commit
+.env
+*.key
+*.pem
+*.crt
+*.p12
+server.*
+
+# Salesforce CLI local state
+salesforce/.sf/
+salesforce/.sfdx/
+salesforce/.localdevserver/
+
+# Load test output
+loadtest/*.jsonl
+loadtest/results/*.json
+
+.DS_Store
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# --- Local tooling / AI assistant state ---
+.claude/
+.playwright-mcp/
+CLAUDE.local.md
+
+# --- Personal notes (not part of the project) ---
+YOUR_TURN.md
+
+# --- Env & secrets ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# --- Logs ---
+*.log

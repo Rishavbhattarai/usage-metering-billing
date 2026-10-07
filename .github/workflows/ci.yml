@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: metering
+          POSTGRES_PASSWORD: metering
+          POSTGRES_DB: metering_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U metering -d metering_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://metering:metering@localhost:5432/metering_test
+      REQUIRE_DB: "1"   # fail (don't skip) integration tests if Postgres is missing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Ruff (lint)
+        run: ruff check .
+      - name: Ruff (format)
+        run: ruff format --check .
+      - name: Mypy
+        run: mypy
+      - name: Pytest
+        run: pytest -q

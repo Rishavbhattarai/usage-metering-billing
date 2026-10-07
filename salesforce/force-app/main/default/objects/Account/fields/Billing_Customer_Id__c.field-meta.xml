@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Billing_Customer_Id__c</fullName>
+    <caseSensitive>true</caseSensitive>
+    <description>customer_id from the billing pipeline. External ID used for idempotent upserts.</description>
+    <externalId>true</externalId>
+    <label>Billing Customer Id</label>
+    <length>64</length>
+    <required>false</required>
+    <type>Text</type>
+    <unique>true</unique>
+</CustomField>

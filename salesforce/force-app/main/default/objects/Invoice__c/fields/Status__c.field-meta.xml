@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Status__c</fullName>
+    <description>Mirrors invoices.status in the ledger.</description>
+    <externalId>false</externalId>
+    <label>Status</label>
+    <required>false</required>
+    <type>Picklist</type>
+    <unique>false</unique>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Draft</fullName>
+                <default>true</default>
+                <label>Draft</label>
+            </value>
+            <value>
+                <fullName>Finalized</fullName>
+                <default>false</default>
+                <label>Finalized</label>
+            </value>
+            <value>
+                <fullName>Void</fullName>
+                <default>false</default>
+                <label>Void</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>
