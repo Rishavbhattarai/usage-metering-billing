@@ -21,10 +21,6 @@ def exact_mul(a: Decimal, b: Decimal) -> Decimal:
     return _EXACT.multiply(a, b)
 
 
-def exact_add(a: Decimal, b: Decimal) -> Decimal:
-    return _EXACT.add(a, b)
-
-
 def exact_sub(a: Decimal, b: Decimal) -> Decimal:
     return _EXACT.subtract(a, b)
 
